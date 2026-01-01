@@ -57,7 +57,7 @@ services:
       - coingecko-net
       - proxy-net
     labels:
-      - "caddy=api.zenon.info"
+      - "caddy=${DOMAIN:-api.zenon.info}"
       - "caddy.reverse_proxy={{upstreams 5000}}"
 
   worker:
