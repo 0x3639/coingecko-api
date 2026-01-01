@@ -1,0 +1,109 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: coingecko-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-coingecko}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-coingecko}
+      POSTGRES_DB: ${DB_NAME:-coingecko}
+    volumes:
+      - coingecko_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-coingecko}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - coingecko-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: coingecko-redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - coingecko-net
+
+  web:
+    build: .
+    container_name: coingecko-web
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-coingecko}
+      DB_PASSWORD: ${DB_PASSWORD:-coingecko}
+      DB_NAME: ${DB_NAME:-coingecko}
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - coingecko-net
+      - proxy-net
+    labels:
+      - "caddy=api.zenon.info"
+      - "caddy.reverse_proxy={{upstreams 5000}}"
+
+  worker:
+    build: .
+    container_name: coingecko-worker
+    restart: unless-stopped
+    command: celery -A celery_worker worker --loglevel=info
+    environment:
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-coingecko}
+      DB_PASSWORD: ${DB_PASSWORD:-coingecko}
+      DB_NAME: ${DB_NAME:-coingecko}
+      DB_PORT: 5432
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - coingecko-net
+
+  beat:
+    build: .
+    container_name: coingecko-beat
+    restart: unless-stopped
+    command: celery -A celery_worker beat --loglevel=info
+    environment:
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-coingecko}
+      DB_PASSWORD: ${DB_PASSWORD:-coingecko}
+      DB_NAME: ${DB_NAME:-coingecko}
+      DB_PORT: 5432
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - coingecko-net
+
+volumes:
+  coingecko_postgres_data:
+
+networks:
+  coingecko-net:
+  proxy-net:
+    external: true
