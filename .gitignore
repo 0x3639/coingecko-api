@@ -1,0 +1,25 @@
+# .gitignore
+
+# Environment variables
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Logs
+*.log
+
+# Celery
+celerybeat-schedule
+
+# Redis
+dump.rdb
+
+# macOS
+.DS_Store
+
+# Data files
+response_*.json
+data/

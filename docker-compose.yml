@@ -1,0 +1,91 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${DB_USER:-coingecko}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-coingecko}
+      POSTGRES_DB: ${DB_NAME:-coingecko}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-coingecko}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - coingecko-network
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - coingecko-network
+
+  web:
+    build: .
+    ports:
+      - "5001:5000"
+    environment:
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-coingecko}
+      DB_PASSWORD: ${DB_PASSWORD:-coingecko}
+      DB_NAME: ${DB_NAME:-coingecko}
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - coingecko-network
+
+  worker:
+    build: .
+    command: celery -A celery_worker worker --loglevel=info
+    environment:
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-coingecko}
+      DB_PASSWORD: ${DB_PASSWORD:-coingecko}
+      DB_NAME: ${DB_NAME:-coingecko}
+      DB_PORT: 5432
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - coingecko-network
+
+  beat:
+    build: .
+    command: celery -A celery_worker beat --loglevel=info
+    environment:
+      DB_HOST: postgres
+      DB_USER: ${DB_USER:-coingecko}
+      DB_PASSWORD: ${DB_PASSWORD:-coingecko}
+      DB_NAME: ${DB_NAME:-coingecko}
+      DB_PORT: 5432
+      CELERY_BROKER_URL: redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - coingecko-network
+
+networks:
+  coingecko-network:
+    driver: bridge
