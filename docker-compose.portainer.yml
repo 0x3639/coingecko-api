@@ -107,3 +107,4 @@ networks:
   coingecko-net:
   proxy-net:
     external: true
+    name: root_proxy-net
